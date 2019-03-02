@@ -4,10 +4,20 @@ import (
 	"bufio"
 	"fmt"
 	"log"
+	"net"
+	"net/http"
+	"net/rpc"
 	"os"
 	"strconv"
 	"strings"
 )
+
+const (
+	defaultHost = "localhost"
+	defaultPort = "3410"
+)
+
+type Node struct{}
 
 var Port int = 3401
 
@@ -55,7 +65,53 @@ func doPort(portNumber string) {
 	Port = port
 }
 
-func doCreate()             {}
+func doCreate() {
+	node := new(Node)
+	address := defaultHost + ":" + defaultPort
+	go server(address)
+}
+
+func server(address string) {
+	actor := startActor()
+	rpc.Register(actor)
+	rpc.HandleHTTP()
+	fmt.Printf("Listening")
+
+	l, e := net.Listen("tcp", address)
+	if e != nil {
+		log.Fatal("listen error:", e)
+	}
+	if err := http.Serve(l, nil); err != nil {
+		log.Fatalf("http.Server: %v", err)
+	}
+}
+
+func (s server) ping() error {
+	finished := make(chan struct{})
+	s <- func(f *Feed) {
+		if len(f.Messages) < count {
+			count = len(f.Messages)
+
+		}
+		*reply = make([]string, count)
+		copy(*reply, f.Messages[len(f.Messages)-count:])
+		finished <- struct{}{}
+	}
+	<-finished
+	return nil
+}
+
+func startActor() Server {
+	ch := make(chan handler)
+	state := new(Feed)
+	go func() {
+
+		for f := range ch {
+			f(state)
+		}
+	}()
+	return ch
+}
 func doJoin(address string) {}
 func doQuit() {
 	os.Exit(0)
